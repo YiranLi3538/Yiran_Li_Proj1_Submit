@@ -1,0 +1,442 @@
+---
+title: "Project 1 Presidential Speeches"
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+---
+## _Yiran Li \  yl3538_
+
+
+###  \   \  Franklin D. Roosevelt is undeniably one of the most venerated president in the history of the United States. Donald J. Trump, on the other hand, is undoubtedly one of the most controversial to ever hold the highest office of the Land of the Free. One common denominator between the two drastically different figures is the impact of their words. In this project, I will explore the various aspects that distinguish the two figures’ way of speaking by parsing their inaugural and nomination acceptance speeches.
+
+
+###  \   \  Through this three-part analysis, I will argue that their speeches reveal their different ways of exercising their persuasive power, divergent views of their respective presidency, and their contrasting personalities.
+
+#  \
+
+## __Part I: The Commander in Chief Vs The Reality TV Star__
+
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+#print(R.version)
+#install.packages("rJava",type='source')
+
+#rmarkdown::render("Project1_Inaugural_Yiran_Li.Rmd")
+#Sys.getenv()
+#Sys.setenv(JAVA_HOME='C:\\Program Files\\Java\\jre7') # for 64-bit version
+#Sys.setenv(JAVA_HOME='C:\\Program Files (x86)\\Java\\jre7') # for 32-bit version
+
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+library(dplyr)
+library(tidytext)
+library(rJava)
+library(qdap)
+
+library("rvest")
+library("tibble")
+library("sentimentr")
+library("gplots")
+library("dplyr")
+library("tm")
+library("syuzhet")
+library("factoextra")
+library("beeswarm")
+library("scales")
+library("RColorBrewer")
+library("RANN")
+library("tm")
+library("topicmodels")
+
+
+# Read in the speeches 
+folder_path="../data/fulltext/"
+speeches=list.files(path = folder_path, pattern = "*.txt")
+prex.out=substr(speeches, 6, nchar(speeches)-4)
+
+ff_all<-Corpus(DirSource(folder_path))
+
+ff_all<-tm_map(ff_all, stripWhitespace)
+ff_all<-tm_map(ff_all, content_transformer(tolower))
+ff_all<-tm_map(ff_all, removeWords, stopwords("english"))
+ff_all<-tm_map(ff_all, removeWords, character(0))
+ff_all<-tm_map(ff_all, removePunctuation)
+
+tdm_all<-TermDocumentMatrix(ff_all)
+
+tdm_tidy<-tidy(tdm_all)
+
+tdm_overall<-summarise(group_by(tdm_tidy, term), sum(count))
+
+########## Comparison wordcloud ########
+ 
+FRD_DT <- c("inaugFranklinDRoosevelt-1.txt", "inaugDonaldJTrump-1.txt")  
+tdm_FDR_DT <- tdm_all[,colnames(tdm_all)==FRD_DT] %>%
+  as.matrix() 
+colnames(tdm_FDR_DT) <- c("Trump", "FDR")
+
+par(mfrow=c(1,1))
+comparison.cloud(tdm_FDR_DT, random.order=FALSE, colors = c("indianred3","lightsteelblue3"),
+                 title.size=3, max.words=500)
+
+
+```
+
+###  \   \  The above comparison word cloud reveals the difference in the choice of words and way of speaking between FDR and Trump. Trump uses a great deal more colloquial terms such as "going", "get", "like"; FDR used terms that have more gravity and commands attention and respect, such as "discipline", "action", "duty".  
+
+###  \   \  FDR's choice of words not only shows thoughtfulness and sophistication but also displays his love and high expectation of his country as well as his sencerity for the office. This sharp contrast with the simplicity of Trump's vocabulary, thus the contrast of attitudes, will be made even more obvious when we consider the sentiments of their sentences.
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+source("../lib/plotstacked.R")
+source("../lib/speechFuncs.R")
+### Inauguaral speeches
+main.page <- read_html(x = "http://www.presidency.ucsb.edu/inaugurals.php")
+# Get link URLs
+# f.speechlinks is a function for extracting links from the list of speeches. 
+inaug=f.speechlinks(main.page)
+
+#as.Date(inaug[-nrow(inaug),1], format="%B %e, %Y")
+inaug=inaug[-nrow(inaug),] # remove the last line, irrelevant due to error.
+
+#### Nomination speeches
+main.page=read_html("http://www.presidency.ucsb.edu/nomination.php")
+# Get link URLs
+nomin <- f.speechlinks(main.page)
+
+#
+#### Farewell speeches
+main.page=read_html("http://www.presidency.ucsb.edu/farewell_addresses.php")
+# Get link URLs
+farewell <- f.speechlinks(main.page)
+
+inaug.list=read.csv("../data/inauglist.csv", stringsAsFactors = FALSE)
+nomin.list=read.csv("../data/nominlist.csv", stringsAsFactors = FALSE)
+farewell.list=read.csv("../data/farewelllist.csv", stringsAsFactors = FALSE)
+speech.list=rbind(inaug.list, nomin.list, farewell.list)
+speech.list$type=c(rep("inaug", nrow(inaug.list)),
+                   rep("nomin", nrow(nomin.list)),
+                   rep("farewell", nrow(farewell.list)))
+speech.url=rbind(inaug, nomin, farewell)
+speech.list=cbind(speech.list, speech.url[-47,])
+# Loop over each row in speech.list
+
+speech.list$fulltext=NA
+
+for(i in seq(nrow(speech.list))) {
+  text <- read_html(speech.list$urls[i]) %>% # load the page
+    html_nodes(".displaytext") %>% # isloate the text
+    html_text() # get the text
+  speech.list$fulltext[i]=text
+  # Create the file name
+  filename <- paste0("../data/fulltext/", 
+                     speech.list$type[i],
+                     speech.list$File[i], "-", 
+                     speech.list$Term[i], ".txt")
+  sink(file = filename) %>% # open file to write 
+  cat(text)  # write the file
+  sink() # close the file
+}
+speech1=paste(readLines("../data/fulltext/SpeechDonaldTrump-NA.txt", 
+                  n=-1, skipNul=TRUE),
+              collapse=" ")
+speech2=paste(readLines("../data/fulltext/SpeechDonaldTrump-NA2.txt", 
+                  n=-1, skipNul=TRUE),
+              collapse=" ")
+speech3=paste(readLines("../data/fulltext/PressDonaldTrump-NA.txt", 
+                  n=-1, skipNul=TRUE),
+              collapse=" ")
+
+Trump.speeches <- data.frame(
+  President=rep("Donald J. Trump", 3),
+  File=rep("DonaldJTrump", 3),
+  Term=rep(0, 3),
+  Party=rep("Republican", 3),
+  Date=c("August 31, 2016", "September 7, 2016", "January 11, 2017"),
+  Words=c(word_count(speech1), word_count(speech2), word_count(speech3)),
+  Win=rep("yes", 3),
+  type=rep("speeches", 3),
+  links=rep(NA, 3),
+  urls=rep(NA, 3),
+  fulltext=c(speech1, speech2, speech3)
+)
+
+speech.list=rbind(speech.list, Trump.speeches)
+
+sentence.list=NULL
+
+for(i in 1:nrow(speech.list)){
+  sentences=sent_detect(speech.list$fulltext[i],
+                        endmarks = c("?", ".", "!", "|",";"))
+  if(length(sentences)>0){
+    emotions=get_nrc_sentiment(sentences)
+    word.count=word_count(sentences)
+    # colnames(emotions)=paste0("emo.", colnames(emotions))
+    # in case the word counts are zeros?
+    emotions=diag(1/(word.count+0.01))%*%as.matrix(emotions)
+    sentence.list=rbind(sentence.list, 
+                        cbind(speech.list[i,-ncol(speech.list)],
+                              sentences=as.character(sentences), 
+                              word.count,
+                              emotions,
+                              sent.id=1:length(sentences)
+                              )
+    )
+  }
+}
+
+sentence_list <-
+  sentence.list%>%
+  filter(!is.na(word.count)) 
+```
+
+
+###  \   \   I further compare how the two presidents utilize their persuasive power differently through the juxtaposition of the two’s most emotionally charged sentences in their speeches. 
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+library(diffr)
+DT_sentiments <- sentence_list %>% 
+  filter(File == "DonaldJTrump") 
+DT_sentiment <- DT_sentiments[-c(1:633), ] # Wrongful inclusion of Hillary Clinton and Mitt Romney's
+
+DT_sentiment$index <- 1:nrow(DT_sentiment)
+########## ######## ########
+DT_sentiment$type[DT_sentiment$Date=="August 31, 2016"] <- "nomin"
+DT_sentiment$type[DT_sentiment$Date=="January 11, 2017"] <- "inaug"
+
+agg_list2 <- list(DT_sentiment$Term, DT_sentiment$type)
+DT_agg <- aggregate(DT_sentiment[, 13:23], by=agg_list2, sum )
+DT_agg$ind <- c(1:nrow(DT_agg))
+DT_agg[,1] <- as.factor(DT_agg[,1])
+DT_agg[, 3:ncol(DT_agg)]<-round(DT_agg[, 3:ncol(DT_agg)], digits = 2)
+colnames(DT_agg)[1:2] <- c("Term", "Type")
+
+#print("FDR's Most Trust Sentences")
+speech_df2=tbl_df(sentence_list)%>%
+  filter(File=="FranklinDRoosevelt", word.count>=5)%>%
+  select(sentences, anger:trust)
+speech_df2=as.data.frame(speech_df2)
+#as.character(speech_df2$sentences[apply(speech_df2[,-1], 2, which.max)])
+trust_ord <- order(speech_df2$trust, decreasing = TRUE)
+FDR_reord_speechdf2<-speech_df2$sentences[trust_ord]
+
+#print("Trump's Most Trust Sentences")
+speech_df2 <- DT_sentiment%>%
+  select(sentences, anger:trust)
+speech_df2 <- as.data.frame(speech_df2)
+trust_ord2 <- order(speech_df2$trust, decreasing = TRUE)
+DT_reord_speechdf2<-speech_df2$sentences[trust_ord2]
+
+file1 = tempfile()
+writeLines(as.character(FDR_reord_speechdf2[1:5]), con = file1)
+  
+  
+#writeLines("hello, world!\n", con = file1)
+file2 = tempfile()
+writeLines(as.character(DT_reord_speechdf2[1:5]), con = file2)
+diffr(file1, file2, before = "FDR's Highest Trust Sentences", after = "Trump's Highest Trust Sentences")
+```
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+
+#print("FDR's Most Fear Sentences")
+speech_df2=tbl_df(sentence_list)%>%
+  filter(File=="FranklinDRoosevelt", word.count>=5)%>%
+  select(sentences, anger:trust)
+speech_df2=as.data.frame(speech_df2)
+#as.character(speech_df2$sentences[apply(speech_df2[,-1], 2, which.max)])
+trust_ord <- order(speech_df2$fear, decreasing = TRUE)
+FDR_reord_speechdf2<-speech_df2$sentences[trust_ord]
+#print("Trump's Most Fear Sentences")
+speech_df2 <- DT_sentiment%>%
+  select(sentences, anger:trust)
+speech_df2 <- as.data.frame(speech_df2)
+trust_ord2 <- order(speech_df2$fear, decreasing = TRUE)
+DT_reord_speechdf2<-speech_df2$sentences[trust_ord2]
+
+FILE1 = tempfile()
+writeLines(as.character(FDR_reord_speechdf2[1:5]), con = FILE1)
+  
+  
+#writeLines("hello, world!\n", con = FILE1)
+FILE2 = tempfile()
+writeLines(as.character(DT_reord_speechdf2[1:5]), con = FILE2)
+diffr(FILE1, FILE2, before = "FDR's Highest Fear Sentences", after = "Trump's Highest Fear Sentences")
+```
+
+###  \   \   Consistent with his former life as an uninhibited reality TV star, the above juxtaposition shows that Trump’s style is short, straightforward, and almost informal. This way of speaking clearly aims at connecting with the common people and leverages Trump’s charisma with those who prefer say-it-as-it-is over political rhetoric. 
+ 
+###  \   \   FDR, on the other hand, approached the presidential power with public opinion differently. The widely respected president spoke with much more poise and sophistication, as a true commander in chief. This is, of course, partially due to the different historical period the two presidents inhabit. But it also speaks volume about how FDR chose to engage with his audience – the American people, who he respected and trusted to be able to understand the nuance and gravity of his way of speaking. 
+
+#  \
+
+## __Part II: Duty Vs Notoriety__
+
+
+###  \   \   FDR's unique four terms of presidency gives us an unique set of data to explore the sentiments of his speeches. From a historical point of view, FDR shouldered the responsibility to carry the coutry through a particularly difficult period of time that is World War II. Indeed, as we can see from the following interactive graphs, in the first two terms, at the height of the war, the negative sentiments were strong. As the great leader he was, FDR nevertheless was filled with trust and hope that his country would prevail as shown in the second plot of positive sentiments. 
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+
+library(dygraphs)
+FDR_sentiment <- sentence_list %>% 
+  filter(File == "FranklinDRoosevelt")
+#head(FDR_sentiment)
+FDR_sentiment$index <- 1:nrow(FDR_sentiment)
+########## ######## ########
+
+
+agg_list <- list(FDR_sentiment$Term, FDR_sentiment$type)
+FDR_agg <- aggregate(FDR_sentiment[, 13:23], by=agg_list, sum )
+FDR_agg$ind <- c(1:nrow(FDR_agg))
+FDR_agg[,1] <- as.factor(FDR_agg[,1])
+FDR_agg[, 3:ncol(FDR_agg)]<-round(FDR_agg[, 3:ncol(FDR_agg)], digits = 2)
+colnames(FDR_agg)[1:2] <- c("Term", "Type")
+library(ggplot2)
+library(plotly)
+## Anger and fear are positively correlated
+library(rbokeh)
+figure() %>% 
+  ly_points(anger, fear, data = FDR_agg,
+    color = Term, glyph = Type,
+    hover = list(anger, fear), size=25)
+## Joy and trust are positively correlated
+figure() %>% 
+  ly_points(joy, trust, data = FDR_agg,
+    color = Term, glyph = Type,
+    hover = list(joy, trust), size=25)
+
+```
+
+###  \   \   After tinkering with the following interactive graph, we gain a sense of the urgency and intensity in FDR's speeches. The graph displays the progression of negativity in his nomination acceptance speech throughout his four terms. Consistent with the findings above, the first two terms had the highest peaks of negativity due to the rising intensity of war. However, this "negativity" is not to be confused with pessimism. Thinking back to the choice of words and sentences explored in part I, it is clear that FDR viewed it as his cardinal duty to ignite strength to his people during a time of hardship.
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+FDR_negative <- as.ts(FDR_sentiment$negative)
+  
+FDR_term1_nomin <- as.ts(filter(FDR_sentiment, Term == 1, type == "nomin")$negative)
+FDR_term2_nomin <- as.ts(filter(FDR_sentiment, Term == 2, type == "nomin")$negative)
+FDR_term3_nomin <- as.ts(filter(FDR_sentiment, Term == 3, type == "nomin")$negative)
+FDR_term4_nomin <- as.ts(filter(FDR_sentiment, Term == 4, type == "nomin")$negative)
+FDR_terms_nomin <- cbind(FDR_term1_nomin,FDR_term2_nomin,FDR_term3_nomin,FDR_term4_nomin)
+dygraph(FDR_terms_nomin, main = "FDR 4 Terms Nomination Speech Negativity Progression") %>% dyRangeSelector()%>%
+  dyHighlight(highlightCircleSize = 5, 
+              highlightSeriesBackgroundAlpha = 0.2,
+              hideOnMouseOut = FALSE)
+
+##
+```
+###  \   \   Keeping in mind the rather frivolous choice of words seen in part I, the rampant negativity in Trump's speeches shows a lack of focus on the duty of presidency. It is unsurprising that generating publicity, even the negative kind, is the central objective of this former reality star.
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+DT_sentiments <- sentence_list %>% 
+  filter(File == "DonaldJTrump") 
+DT_sentiment <- DT_sentiments[-c(1:633), ] # Wrongful inclusion of Hillary Clinton and Mitt Romney's
+
+DT_sentiment$index <- 1:nrow(DT_sentiment)
+########## ######## ########
+DT_sentiment$type[DT_sentiment$Date=="August 31, 2016"] <- "nomin"
+DT_sentiment$type[DT_sentiment$Date=="January 11, 2017"] <- "inaug"
+
+agg_list2 <- list(DT_sentiment$Term, DT_sentiment$type)
+DT_agg <- aggregate(DT_sentiment[, 13:23], by=agg_list2, sum )
+DT_agg$ind <- c(1:nrow(DT_agg))
+DT_agg[,1] <- as.factor(DT_agg[,1])
+DT_agg[, 3:ncol(DT_agg)]<-round(DT_agg[, 3:ncol(DT_agg)], digits = 2)
+colnames(DT_agg)[1:2] <- c("Term", "Type")
+
+## Anger and fear are positively correlated
+# 
+# figure() %>% 
+#   ly_points(anger, fear, data = DT_agg,
+#     color = Term, glyph = Type,
+#     hover = list(anger, fear), size=25)
+# ## Joy and trust are positively correlated
+# figure() %>% 
+#   ly_points(joy, trust, data = DT_agg,
+#     color = Term, glyph = Type,
+#     hover = list(joy, trust), size=25)
+
+
+DT_negative <- as.ts(DT_sentiment$negative)
+  
+DT_terms_nomin <- as.ts(filter(DT_sentiment, type == "nomin")$negative)
+DT_terms_inaug <- as.ts(filter(DT_sentiment, type == "inaug")$negative)
+
+DT_terms <- cbind(DT_terms_nomin,DT_terms_inaug)
+dygraph(DT_terms, main = "Trump Nomination and Inauguration Speech Negativity Progression") %>% dyRangeSelector()%>%
+  dyHighlight(highlightCircleSize = 5, 
+              highlightSeriesBackgroundAlpha = 0.2,
+              hideOnMouseOut = FALSE)
+
+##
+```
+
+
+#  \
+
+###  __Part III Self-Effacing Vs Self-Aggrandizing__
+
+###  \   \  The outstanding pink spikes of trust in the following graphs embody the shiny characters of a great president. As someone with whom the nation entrusted its highest office four times, FDR returned love and respect with equal amount of trust. This is especially cherished during the hard times of war because it shows FDR’s unwavering faith in his country and his determination to be its servant. 
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+##
+library(plotly)
+par(mfrow=c(1,2))
+plot_ly(FDR_agg[ FDR_agg$Type=="inaug",], x = ~Term, y = ~anger, type = 'bar', name = 'anger') %>%
+  add_trace(y = ~fear, name = 'fear') %>%
+  add_trace(y = ~disgust, name = 'disgust') %>%
+  add_trace(y = ~sadness, name = 'sadness') %>%
+  add_trace(y = ~anticipation, name = 'anticipation') %>%
+  add_trace(y = ~joy, name = 'joy') %>%
+  add_trace(y = ~trust, name = 'trust') %>%
+  add_trace(y = ~surprise, name = 'surprise') %>%
+  layout(yaxis = list(title = 'Sentiment Score'), barmode = 'group', title = "FDR Inaugural Speech Sentiment Scores across 4 Terms")
+
+plot_ly(FDR_agg[ FDR_agg$Type=="nomin",], x = ~Term, y = ~anger, type = 'bar', name = 'anger') %>%
+  add_trace(y = ~fear, name = 'fear') %>%
+  add_trace(y = ~disgust, name = 'disgust') %>%
+  add_trace(y = ~sadness, name = 'sadness') %>%
+  add_trace(y = ~anticipation, name = 'anticipation') %>%
+  add_trace(y = ~joy, name = 'joy') %>%
+  add_trace(y = ~trust, name = 'trust') %>%
+  add_trace(y = ~surprise, name = 'surprise') %>%
+  layout(yaxis = list(title = 'Sentiment Score'), barmode = 'group', title = "FDR Nomination Speech Sentiment Scores across 4 Terms")
+###
+
+```
+
+###  \   \  Nomination acceptance and inaugural speeches serve different functions. However, it is expected that the speaker would be gracious and presidential, thus we should expect to see high scores for trust and anticipation regardless of the speaker. Yet, despite winning the nomination and even the presidency, Trump could not resist his tendency to generate controversy and exacerbate conflict by inciting fear and negativity. As shown below, fear and anger remains prominently high in his speeches which is consistent with his incendiary style.  
+
+```{r, warning = FALSE, echo = FALSE, message = FALSE}
+##
+library(plotly)
+par(mfrow=c(1,2))
+plot_ly(DT_agg[ DT_agg$Type=="nomin",], x = ~Term, y = ~anger, type = 'bar', name = 'anger') %>%
+  add_trace(y = ~fear, name = 'fear') %>%
+  add_trace(y = ~disgust, name = 'disgust') %>%
+  add_trace(y = ~sadness, name = 'sadness') %>%
+  add_trace(y = ~anticipation, name = 'anticipation') %>%
+  add_trace(y = ~joy, name = 'joy') %>%
+  add_trace(y = ~trust, name = 'trust') %>%
+  add_trace(y = ~surprise, name = 'surprise') %>%
+  layout(yaxis = list(title = 'Sentiment Score'), barmode = 'group', title = "Trump Nomination Speech Sentiment Scores")
+#
+plot_ly(DT_agg[ DT_agg$Type=="inaug",], x = ~Term, y = ~anger, type = 'bar', name = 'anger') %>%
+  add_trace(y = ~fear, name = 'fear') %>%
+  add_trace(y = ~disgust, name = 'disgust') %>%
+  add_trace(y = ~sadness, name = 'sadness') %>%
+  add_trace(y = ~anticipation, name = 'anticipation') %>%
+  add_trace(y = ~joy, name = 'joy') %>%
+  add_trace(y = ~trust, name = 'trust') %>%
+  add_trace(y = ~surprise, name = 'surprise') %>%
+  layout(yaxis = list(title = 'Sentiment Score'), barmode = 'group', title = "Trump Inaugural Speech Sentiment Scores")
+#
+```
+
+###  \   \  The sharp contrast of sentiments clearly indicates the different significances that holding the highest office in the land takes on for Roosevelt and Trump. For FDR, it is about putting his country and people first. While for Trump, self-importance certainly takes priority. 
+
+
+#  \
+
+###  __Summary__
+
+
+###  \   \  Both FDR and Donald Trump are important political figures to study. In this project, I used various text mining techniques and sentimental analysis to make the argument that the difference in their speech are indicative of their drastically diverging attitudes towards the presidency of the United States as well as their disparate characters. 
